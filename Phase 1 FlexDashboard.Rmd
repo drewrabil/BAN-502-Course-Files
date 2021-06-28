@@ -1,0 +1,258 @@
+---
+title: "Team Rafalowski-Rabil Phase 1"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(stringr)
+library(tidyverse)
+library(tidymodels)
+library(mice) #package for imputation
+library(VIM) #visualizing missingness
+library(ranger) #for random forests
+library(randomForest) #also for random forests
+library(naniar) #visualizing missingness
+library(caret)
+library(skimr)
+library(GGally)
+library(gridExtra)
+library(vip) #variable importance
+
+
+sharkstudent <- read_csv("shark_student.csv")
+sharkstudent<- mutate(sharkstudent,"Season" = str_sub(sharkstudent$SeasonEpisode,12,14))
+
+```
+
+```{r, include=FALSE}
+sharkstudent = sharkstudent %>% mutate_if(is.character,as_factor)
+
+# rename columns
+colnames(sharkstudent)[colnames(sharkstudent) == "Health / Wellness"] <- "HealthWellness" 
+colnames(sharkstudent)[colnames(sharkstudent) == "Lifestyle / Home"] <- "LifestyleHome" 
+colnames(sharkstudent)[colnames(sharkstudent) == "Software / Tech"] <- "SoftwareTech" 
+colnames(sharkstudent)[colnames(sharkstudent) == "Children / Education"] <- "ChildrenEducation" 
+colnames(sharkstudent)[colnames(sharkstudent) == "Fashion / Beauty"] <- "FashionBeauty"
+colnames(sharkstudent)[colnames(sharkstudent) == "Media / Entertainment"] <- "MediaEntertainment"
+colnames(sharkstudent)[colnames(sharkstudent) == "Fitness / Sports / Outdoors"] <- "FitnessSportsOutdoors"
+colnames(sharkstudent)[colnames(sharkstudent) == "Green/CleanTech"] <- "GreenCleanTech"
+colnames(sharkstudent)[colnames(sharkstudent) == "Uncertain / Other"] <- "UncertainOther"
+colnames(sharkstudent)[colnames(sharkstudent) == "Food and Beverage"] <- "FoodBeverage"
+colnames(sharkstudent)[colnames(sharkstudent) == "Business Services"] <- "BusinessServices"
+colnames(sharkstudent)[colnames(sharkstudent) == "Pet Products"] <- "PetProducts"
+
+sharkstudent <- sharkstudent %>% 
+
+# Converts to factor and assigns categories
+  mutate(ReceiveOffer = as_factor(ReceiveOffer)) %>%
+  mutate(ReceiveOffer = fct_recode(ReceiveOffer, "Yes" = "1", "No" = "0")) %>%
+  mutate(RejectOffer = as_factor(RejectOffer)) %>%
+  mutate(RejectOffer = fct_recode(RejectOffer, "Yes" = "1", "No" = "0")) %>%
+  mutate(Deal_Yes = as_factor(Deal_Yes)) %>%
+  mutate(Deal_Yes = fct_recode(Deal_Yes, "Yes" = "1", "No" = "0")) %>%
+  mutate(Deal_No = as_factor(Deal_No)) %>%
+  mutate(Deal_No = fct_recode(Deal_No, "Yes" = "1", "No" = "0")) %>%
+  mutate(Eth1 = as_factor(Eth1)) %>%
+  mutate(Eth1 = fct_recode(Eth1, "African American" = "1", "White" = "2", "Asian" = "3", "Latino" = "4", "No presenter 1" = "0")) %>%
+  mutate(Eth2 = as_factor(Eth2)) %>%
+  mutate(Eth2 = fct_recode(Eth2, "African American" = "1", "White" = "2", "Asian" = "3", "Latino" = "4", "No presenter 2" = "0")) %>%
+  mutate(Eth3 = as_factor(Eth3)) %>%
+  mutate(Eth3 = fct_recode(Eth3, "African American" = "1", "White" = "2", "Asian" = "3", "Latino" = "4", "No presenter 3" = "0")) %>%
+  mutate(Eth4 = as_factor(Eth4)) %>%
+  mutate(Eth4 = fct_recode(Eth4, "African American" = "1", "White" = "2", "Asian" = "3", "Latino" = "4", "No presenter 4" = "0")) %>%
+  mutate(Eth5 = as_factor(Eth5)) %>%
+  mutate(Eth5 = fct_recode(Eth5, "African American" = "1", "White" = "2", "Asian" = "3", "Latino" = "4", "No presenter 5" = "0")) %>%
+  mutate(Male1 = as_factor(Male1)) %>%
+  mutate(Male1 = fct_recode(Male1, "Yes" = "1", "No" = "0")) %>%
+  mutate(Male2 = as_factor(Male2)) %>%  
+  mutate(Male2 = fct_recode(Male2, "Yes" = "1", "No" = "0")) %>%
+  mutate(Male3 = as_factor(Male3)) %>%
+  mutate(Male3 = fct_recode(Male3, "Yes" = "1", "No" = "0")) %>%
+  mutate(Male4 = as_factor(Male4)) %>%
+  mutate(Male4 = fct_recode(Male4, "Yes" = "1", "No" = "0")) %>%
+  mutate(Female1 = as_factor(Female1)) %>%
+  mutate(Female1 = fct_recode(Female1, "Yes" = "1", "No" = "0")) %>%
+  mutate(Female2 = as_factor(Female2)) %>%
+  mutate(Female2 = fct_recode(Female2, "Yes" = "1", "No" = "0")) %>%
+  mutate(Female3 = as_factor(Female3)) %>%
+  mutate(Female3 = fct_recode(Female3, "Yes" = "1", "No" = "0")) %>%
+  mutate(Female4 = as_factor(Female4)) %>%
+  mutate(Female4 = fct_recode(Female4, "Yes" = "1", "No" = "0")) %>%
+  mutate(Novelties = as_factor(Novelties)) %>% 
+  mutate(Novelties = fct_recode(Novelties, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`HealthWellness` = as_factor(`HealthWellness`)) %>% 
+  mutate(`HealthWellness` = fct_recode(`HealthWellness`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`FoodBeverage` = as_factor(`FoodBeverage`)) %>% 
+  mutate(`FoodBeverage` = fct_recode(`FoodBeverage`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`BusinessServices` = as_factor(`BusinessServices`)) %>% 
+  mutate(`BusinessServices` = fct_recode(`BusinessServices`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`LifestyleHome` = as_factor(`LifestyleHome`)) %>% 
+  mutate(`LifestyleHome` = fct_recode(`LifestyleHome`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`SoftwareTech` = as_factor(`SoftwareTech`)) %>% 
+  mutate(`SoftwareTech` = fct_recode(`SoftwareTech`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`ChildrenEducation` = as_factor(`ChildrenEducation`)) %>% 
+  mutate(`ChildrenEducation` = fct_recode(`ChildrenEducation`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(Automotive = as_factor(Automotive)) %>% 
+  mutate(Automotive = fct_recode(Automotive, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`FashionBeauty` = as_factor(`FashionBeauty`)) %>% 
+  mutate(`FashionBeauty` = fct_recode(`FashionBeauty`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`MediaEntertainment` = as_factor(`MediaEntertainment`)) %>% 
+  mutate(`MediaEntertainment` = fct_recode(`MediaEntertainment`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`FitnessSportsOutdoors` = as_factor(`FitnessSportsOutdoors`)) %>% 
+  mutate(`FitnessSportsOutdoors` = fct_recode(`FitnessSportsOutdoors`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`PetProducts` = as_factor(`PetProducts`)) %>% 
+  mutate(`PetProducts` = fct_recode(`PetProducts`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(Travel = as_factor(Travel)) %>% 
+  mutate(Travel = fct_recode(Travel, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`GreenCleanTech` = as_factor(`GreenCleanTech`)) %>% 
+  mutate(`GreenCleanTech` = fct_recode(`GreenCleanTech`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(`UncertainOther` = as_factor(`UncertainOther`)) %>% 
+  mutate(`UncertainOther` = fct_recode(`UncertainOther`, "Yes" = "1", "No" = "0" )) %>%
+  mutate(MalePresenter = as_factor(MalePresenter)) %>% 
+  mutate(MalePresenter = fct_recode(MalePresenter, "Yes" = "1", "No" = "0" )) %>%
+  mutate(FemalePresenter = as_factor(FemalePresenter)) %>% 
+  mutate(FemalePresenter = fct_recode(FemalePresenter, "Yes" = "1", "No" = "0" )) %>%
+  mutate(MixedGenderPresenters = as_factor(MixedGenderPresenters)) %>% 
+  mutate(MixedGenderPresenters = fct_recode(MixedGenderPresenters, "Yes" = "1", "No" = "0" )) %>%
+  mutate(CompanyState = as_factor(CompanyState)) %>% 
+  mutate(CompanyState = fct_recode(CompanyState, "Yes" = "1", "No" = "0" )) %>%
+  mutate(BarbaraCorcoran = as_factor(BarbaraCorcoran)) %>% 
+  mutate(BarbaraCorcoran = fct_recode(BarbaraCorcoran, "Yes" = "1", "No" = "0" )) %>%
+  mutate(MarkCuban = as_factor(MarkCuban)) %>% 
+  mutate(MarkCuban = fct_recode(MarkCuban, "Yes" = "1", "No" = "0" )) %>%
+  mutate(LoriGreiner = as_factor(LoriGreiner)) %>% 
+  mutate(LoriGreiner = fct_recode(LoriGreiner, "Yes" = "1", "No" = "0" )) %>%
+  mutate(RobertHerjavec = as_factor(RobertHerjavec)) %>% 
+  mutate(RobertHerjavec = fct_recode(RobertHerjavec, "Yes" = "1", "No" = "0" )) %>%
+  mutate(DaymondJohn = as_factor(DaymondJohn)) %>% 
+  mutate(DaymondJohn = fct_recode(DaymondJohn, "Yes" = "1", "No" = "0" )) %>%
+  mutate(KevinOLeary = as_factor(KevinOLeary)) %>% 
+  mutate(KevinOLeary = fct_recode(KevinOLeary, "Yes" = "1", "No" = "0" )) %>%
+  mutate(KevinHarrington = as_factor(KevinHarrington)) %>% 
+  mutate(KevinHarrington = fct_recode(KevinHarrington, "Yes" = "1", "No" = "0" )) %>%
+  mutate(Guest = as_factor(Guest)) %>% 
+  mutate(Guest = fct_recode(Guest, "Yes" = "1", "No" = "0" ))
+
+# Remove weak or non-required variables
+sharkstudent = sharkstudent %>% select(-CompanyState) 
+sharkstudent = sharkstudent %>% select(-Deal_No) 
+sharkstudent = sharkstudent %>% select(-ReceiveOffer)
+sharkstudent = sharkstudent %>% select(-RejectOffer)
+sharkstudent = sharkstudent %>% select(-Male4)
+# sharkstudent = sharkstudent %>% select(-Female4)
+# sharkstudent = sharkstudent %>% select(-Eth4)
+# sharkstudent = sharkstudent %>% select(-Eth5)
+sharkstudent = sharkstudent %>% select(-SeasonEpisode)
+sharkstudent = sharkstudent %>% select(-Company)
+sharkstudent = sharkstudent %>% select(-X1) 
+```
+
+
+```{r, include = FALSE}
+set.seed(123)
+rf_folds = vfold_cv(sharkstudent, v = 5)
+
+set.seed(123)
+shark_recipe = recipe(Deal_Yes ~., sharkstudent) %>%
+  step_dummy(all_nominal(), -all_outcomes())
+  # step_other()
+  # step_novel()
+
+rf_model = rand_forest(mtry = tune(), min_n = tune(), trees = 100) %>% #add tuning of mtry and min_n parameters
+  #setting trees to 100 here should also speed things up a bit, but more trees might be better
+  set_engine("ranger", importance = "permutation") %>% #added importance metric
+  set_mode("classification")
+
+shark_wflow = 
+  workflow() %>% 
+  add_model(rf_model) %>% 
+  add_recipe(shark_recipe)
+
+
+rf_grid = grid_regular(
+  mtry(range = c(2, 30)), #these values determined through significant trial and error
+  min_n(range = c(15, 25)), #these values determined through significant trial and error
+  levels = 5
+)
+
+set.seed(123)
+rf_res_tuned = tune_grid(
+  shark_wflow,
+  resamples = rf_folds,
+  grid = rf_grid #use the tuning grid
+)
+
+best_rf = select_best(rf_res_tuned, "accuracy")
+
+final_rf = finalize_workflow(
+  shark_wflow,
+  best_rf
+)
+
+final_rf
+
+#fit the finalized workflow to our training data
+final_rf_fit = fit(final_rf, sharkstudent)
+```
+
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+### Proportional Stacked Bar Chart by Season
+
+```{r}
+ggplot(sharkstudent, aes(x = Season, fill = Deal_Yes)) + geom_bar(position = "fill") + 
+  theme(axis.text.x = element_text(angle =60)) + 
+  labs(title= "Proportional Stacked Bar Chart by Season", y= "Count") + 
+  theme(plot.title = element_text(hjust = 0.5,face="bold"))+ 
+  scale_fill_discrete(name="Deal Made")
+
+```
+
+
+### Proportional Stacked Bar Chart for Business Service Products
+
+```{r}
+ggplot(sharkstudent, aes(x = `BusinessServices`, fill = Deal_Yes)) + 
+  geom_bar(position = "fill") +
+  labs(title = "Proportional Stacked Bar Chart for Business Service Products", y = "Count", x = "Product in Business Services", fill = "Deal Made") +
+  theme(plot.title = element_text(hjust = 0.5,face="bold"))
+```
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+### Boxplot Equity Requested by Entrepreneur
+
+```{r}
+ggplot(sharkstudent, aes(x = Deal_Yes, y = EquityRequested)) +                                # 
+  geom_boxplot(outlier.shape = NA) +
+  coord_cartesian(ylim = quantile(sharkstudent$EquityRequested, c(0.1, 0.9))) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(title = "Boxplot Equity Requested by Entrepreneur", y = "Equity Requested %", x = "Deal Made") +
+  theme(plot.title = element_text(hjust = 0.5,face="bold"))
+```
+
+
+### Boxplot Implied Value Requested by Entrepreneur
+
+```{r}
+ggplot(sharkstudent, aes(x = Deal_Yes, y = ImpliedValuationRequested)) + geom_boxplot(outlier.shape = NA)+ 
+  coord_cartesian(ylim = quantile(sharkstudent$ImpliedValuationRequested, c(0.1, 0.9))) + scale_y_continuous(labels=scales::dollar_format()) + labs(title= "Boxplot Implied Value Requested by Entrepreneur", x="Deal Made", y= "Implied Valuation Requested") + theme(plot.title = element_text(hjust = 0.5,face="bold"))
+```
+
+Column {data-width=800}
+-----------------------------------------------------------------------
+
+### Random Forest Variables of Importance
+
+```{r}
+final_rf_fit %>% pull_workflow_fit() %>% vip(geom = "point", mapping=aes_string(fill="Variable")) + labs(title="Random Forest Variables of Importance", y="Importance", x="Variable") + theme(plot.title = element_text(hjust = 0.5,face="bold")) 
+```
+
